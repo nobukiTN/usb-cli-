@@ -1,0 +1,10 @@
+[package]
+name = "infra"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+domain = {path = "../domain"}
+time = { version = "0.3.44", features = ["local-offset"] }
+udev = "0.9.3"
+uuid = { version = "1.18.1", features = ["v4", "v7"] }

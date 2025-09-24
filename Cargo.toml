@@ -1,0 +1,4 @@
+[workspace] 
+members =[
+    "crate/members/*","crate/main","crate/boot"
+]
