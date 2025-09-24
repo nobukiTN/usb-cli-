@@ -41,3 +41,10 @@ pub trait SaveToFolder{
     fn save_snap(&self,folder:impl AsRef<Path>) -> Result<PathBuf,UsbError>;
 }
 
+pub trait VideoFinder {
+    fn find_iter<'a>(&'a self, root: &'a Path)
+        -> Box<dyn Iterator<Item = Result<PathBuf, UsbError>> + 'a + Send>;
+    fn find_all(&self, root: &Path) -> Result<Vec<PathBuf>, UsbError> {
+        self.find_iter(root).collect()
+    }
+}

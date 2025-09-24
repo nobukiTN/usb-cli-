@@ -9,7 +9,7 @@ use domain::usb_domain::{usb_error::*,usb_model::*,usb_port::*};
 use time::OffsetDateTime;
 use uuid::{Uuid,Timestamp,NoContext};
 use udev::{Device,Enumerator,MonitorBuilder,MonitorSocket,Event,EventType,};
-
+use walkdir::{WalkDir,DirEntry};
 pub struct GeneratorId;
 impl CreateId for GeneratorId{
     fn generate_v7_id(&self) -> Uuid {
@@ -186,5 +186,70 @@ impl MountPathResolver for ProcMountinfoResolver {
             }
         }
         Ok(mounts)
+    }
+}
+pub struct RecursiveVideoFinder {
+    allowed: HashSet<&'static str>,
+    max_depth: Option<usize>,
+    follow_links: bool,
+}
+
+impl RecursiveVideoFinder {
+    pub fn new() -> Self {
+
+        let allowed = HashSet::from([
+            "mp4", "mov", "m4v", "mkv", "avi", "wmv", "flv", "webm",
+            "mts", "m2ts", "ts",
+        ]);
+        Self { allowed, max_depth: None, follow_links: false }
+    }
+
+    pub fn with_max_depth(mut self, d: usize) -> Self {
+        self.max_depth = Some(d);
+        self
+    }
+
+    pub fn follow_links(mut self, yes: bool) -> Self {
+        self.follow_links = yes;
+        self
+    }
+
+    fn is_video(&self, entry: &DirEntry) -> bool {
+        if !entry.file_type().is_file() {
+            return false;
+        }
+        match entry.path().extension().and_then(|s| s.to_str()) {
+            Some(ext) => self.allowed.contains(&ext.to_ascii_lowercase()[..]),
+            None => false,
+        }
+    }
+}
+
+impl VideoFinder for RecursiveVideoFinder {
+    fn find_iter<'a>(&'a self, root: &'a Path)
+        -> Box<dyn Iterator<Item = Result<PathBuf, UsbError>> + 'a + Send>
+    {
+        let mut walk = WalkDir::new(root).follow_links(self.follow_links);
+        if let Some(d) = self.max_depth { walk = walk.max_depth(d); }
+
+
+        let it = walk.into_iter()
+            .filter_map(|res| {
+                match res {
+                    Ok(entry) => {
+                        if self.is_video(&entry) {
+                            Some(Ok(entry.into_path()))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+             
+                        Some(Err(UsbError::AnyError(format!("walk error: {e}"))))
+                    }
+                }
+            });
+
+        Box::new(it)
     }
 }
