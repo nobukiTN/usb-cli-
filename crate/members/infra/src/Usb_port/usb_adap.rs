@@ -1,4 +1,7 @@
 use std::fmt::format;
+use std::fs::File;
+use std::io::{BufRead,BufReader};
+use nix::sys::stat::{major,minor};
 use std::os::unix::fs::MetadataExt; 
 use std::task::ready;
 use std::path::{Path,PathBuf};
@@ -136,4 +139,52 @@ fn prop_string(d: &Device, key: &str) -> Option<String> {
 fn attr_string(d: &Device, key: &str) -> Option<String> {
     d.attribute_value(key)
         .and_then(|s| s.to_str().map(|x| x.to_owned()))
+}
+
+pub struct ProcMountinfoResolver;
+
+impl ProcMountinfoResolver {
+    pub fn new() -> Self { Self }
+}
+
+impl MountPathResolver for ProcMountinfoResolver {
+    fn resolve_mounts(&self, devnode: &Path) -> Result<Vec<PathBuf>, UsbError> {
+        let rdev = std::fs::metadata(devnode)
+            .map_err(|e| UsbError::AnyError(format!("metadata({}): {e}", devnode.display())))?
+            .rdev();
+
+        let want_major = major(rdev);
+        let want_minor = minor(rdev);
+
+        let file = File::open("/proc/self/mountinfo")
+            .map_err(|e| UsbError::AnyError(format!("open mountinfo: {e}")))?;
+        let reader = BufReader::new(file);
+
+        let mut mounts = Vec::new();
+
+        for line in reader.lines() {
+            let line = line.map_err(|e| UsbError::AnyError(format!("read mountinfo: {e}")))?;
+
+            let mut parts = line.split(" - ");
+            let left = parts.next().unwrap_or("");
+
+            let mut f = left.split_whitespace();
+            let _mount_id = f.next();
+            let _parent_id = f.next();
+            let maj_min = f.next(); 
+            let _root = f.next();
+            let mount_point = f.next();
+
+            if let (Some(mm), Some(mp)) = (maj_min, mount_point) {
+                if let Some((maj_s, min_s)) = mm.split_once(':') {
+                    if let (Ok(maj), Ok(min)) = (maj_s.parse::<u64>(), min_s.parse::<u64>()) {
+                        if maj == want_major && min == want_minor {
+                            mounts.push(PathBuf::from(mp));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(mounts)
+    }
 }

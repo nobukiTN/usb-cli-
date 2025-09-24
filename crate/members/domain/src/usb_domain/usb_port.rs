@@ -26,6 +26,9 @@ pub trait UsbProbe{
     fn list_all(&self) ->Result<Vec<(PathBuf,UsbInfo)>,UsbError>;
 }
 
+pub trait MountPathResolver{
+    fn resolve_mounts(&self,devnode:&Path) -> Result<Vec<PathBuf>,UsbError>;
+}
 pub trait UsbEventSource{
     fn watch(&self) ->Result<Box<dyn Iterator<Item = Result<UsbEvent,UsbError>> + Send>,UsbError>;
 }
